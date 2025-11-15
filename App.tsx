@@ -61,6 +61,16 @@ const App: React.FC = () => {
 
   const handleSaveLink = async (linkToSave: Link) => {
     const isEditing = !!editingLink;
+
+    // Kiểm tra link trùng lặp chỉ khi thêm mới
+    if (!isEditing) {
+      const isDuplicate = links.some(link => link.url.trim().toLowerCase() === linkToSave.url.trim().toLowerCase());
+      if (isDuplicate) {
+        alert('Lỗi: Link này đã tồn tại trong hệ thống. Vui lòng kiểm tra lại.');
+        return; // Dừng thực thi nếu link bị trùng
+      }
+    }
+
     const action = isEditing ? 'updateLink' : 'addLink';
     
     // Tạo payload cho API. Backend sẽ tự gán ID và detectedAt cho link mới.
