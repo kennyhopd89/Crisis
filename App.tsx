@@ -1,52 +1,89 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, Source, Status, View } from './types';
-import { useLocalStorage } from './hooks/useLocalStorage';
+import { Link, Source, View } from './types';
 import Header from './components/Header';
 import LinkMonitoringDashboard from './components/LinkMonitoringDashboard';
 import SourceIntelligenceDashboard from './components/SourceIntelligenceDashboard';
 import LinkEditor from './components/LinkEditor';
 import Modal from './components/Modal';
 
+// !!! QUAN TRỌNG: Dán Web App URL của Google Apps Script của bạn vào đây
+const API_URL = "https://script.google.com/macros/https://script.google.com/a/macros/89sgroup.vn/s/AKfycbzREAeS-aFnaKD7-pty5Hd_vn5380UJZFEE4aQwTT03InbBwl4-C55VE-j02NcaUj8ecQ/exec";
+
 const App: React.FC = () => {
   const [view, setView] = useState<View>(View.Links);
-  const [links, setLinks] = useLocalStorage<Link[]>('negativeLinks', []);
-  const [sources, setSources] = useLocalStorage<Source[]>('negativeSources', []);
+  // Chuyển từ useLocalStorage sang useState
+  const [links, setLinks] = useState<Link[]>([]);
+  const [sources, setSources] = useState<Source[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLink, setEditingLink] = useState<Link | null>(null);
 
-  const updateSourceIntelligence = useCallback((newLink: Link) => {
-    setSources(prevSources => {
-      const sourceIndex = prevSources.findIndex(s => s.profileUrl.toLowerCase() === newLink.source.toLowerCase());
-      if (sourceIndex > -1) {
-        const updatedSources = [...prevSources];
-        updatedSources[sourceIndex].negativePostCount += 1;
-        return updatedSources;
-      } else {
-        const newSource: Source = {
-          id: Date.now().toString(),
-          name: newLink.source, // Tên ban đầu có thể là URL
-          profileUrl: newLink.source,
-          negativePostCount: 1,
-          type: 'Chưa xác định',
-          notes: 'Tự động thêm vào hệ thống.',
-          suspicious: false,
-        };
-        return [...prevSources, newSource];
-      }
-    });
-  }, [setSources]);
+  // Hàm để lấy dữ liệu từ backend
+  const fetchData = useCallback(async () => {
+    if (!loading) setLoading(true); // Hiển thị loading khi fetch lại
+    try {
+      // Sử dụng Promise.all để gọi API song song
+      const [linksResponse, sourcesResponse] = await Promise.all([
+        fetch(`${API_URL}?action=getLinks`),
+        fetch(`${API_URL}?action=getSources`)
+      ]);
 
-  const handleSaveLink = (linkToSave: Link) => {
-    if (editingLink) {
-      // Logic cập nhật link
-      setLinks(prevLinks => prevLinks.map(l => l.id === linkToSave.id ? linkToSave : l));
-    } else {
-      // Logic thêm link mới
-      const newLink = { ...linkToSave, id: Date.now().toString() };
-      setLinks(prevLinks => [newLink, ...prevLinks]);
-      updateSourceIntelligence(newLink);
+      if (!linksResponse.ok || !sourcesResponse.ok) {
+        throw new Error('Lỗi mạng hoặc API không phản hồi');
+      }
+      
+      const linksData = await linksResponse.json();
+      const sourcesData = await sourcesResponse.json();
+
+      setLinks(Array.isArray(linksData) ? linksData : []);
+      setSources(Array.isArray(sourcesData) ? sourcesData : []);
+
+    } catch (error) {
+      console.error("Lỗi khi tải dữ liệu:", error);
+      alert("Không thể kết nối đến server. Vui lòng kiểm tra lại URL API và đảm bảo đã deploy Apps Script chính xác.");
+    } finally {
+      setLoading(false);
     }
+  }, [loading]);
+
+  // Gọi API khi component được mount lần đầu
+  useEffect(() => {
+    if (API_URL.includes("AKfycbzREAeS-aFnaKD7-pty5Hd_vn5380UJZFEE4aQwTT03InbBwl4-C55VE-j02NcaUj8ecQ")) {
+        alert("Vui lòng cập nhật API_URL trong file App.tsx");
+        setLoading(false);
+        return;
+    }
+    fetchData();
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Chỉ chạy một lần
+
+  const handleSaveLink = async (linkToSave: Link) => {
+    const isEditing = !!editingLink;
+    const action = isEditing ? 'updateLink' : 'addLink';
+    
+    // Tạo payload cho API. Backend sẽ tự gán ID và detectedAt cho link mới.
+    const payload = { ...linkToSave };
+      
+    try {
+      // Apps Script yêu cầu gửi POST với kiểu Content-Type đặc biệt
+      await fetch(API_URL, {
+        method: 'POST',
+        redirect: "follow",
+        body: JSON.stringify({ action, payload }),
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+      });
+      
+      // Sau khi gửi, tải lại toàn bộ dữ liệu để đảm bảo đồng bộ
+      fetchData();
+
+    } catch (error) {
+      console.error("Lỗi khi lưu link:", error);
+      alert("Lưu link thất bại. Vui lòng thử lại.");
+    }
+    
     closeModal();
   };
   
@@ -55,11 +92,24 @@ const App: React.FC = () => {
     setIsModalOpen(true);
   };
   
-  const handleDeleteLink = (linkId: string) => {
-    if (window.confirm('Bạn có chắc chắn muốn xóa link này?')) {
-        setLinks(prevLinks => prevLinks.filter(l => l.id !== linkId));
-        // Optional: Add logic to decrement source count if needed
-    }
+  const handleDeleteLink = async (linkId: string) => {
+     if (window.confirm('Bạn có chắc chắn muốn xóa link này?')) {
+        try {
+            await fetch(API_URL, {
+                method: 'POST',
+                redirect: 'follow',
+                body: JSON.stringify({ action: 'deleteLink', payload: { id: linkId } }),
+                headers: {
+                    'Content-Type': 'text/plain;charset=utf-8',
+                },
+            });
+            // Tải lại dữ liệu sau khi xóa
+            fetchData();
+        } catch (error) {
+            console.error("Lỗi khi xóa link:", error);
+            alert("Xóa link thất bại.");
+        }
+     }
   };
 
   const openAddModal = () => {
@@ -71,20 +121,26 @@ const App: React.FC = () => {
     setIsModalOpen(false);
     setEditingLink(null);
   };
+  
+  const renderContent = () => {
+    if (loading) {
+        return <div className="text-center p-10">Đang tải dữ liệu...</div>;
+    }
+    if (view === View.Links) {
+        return <LinkMonitoringDashboard 
+            links={links} 
+            onEdit={handleEditLink} 
+            onDelete={handleDeleteLink}
+        />;
+    }
+    return <SourceIntelligenceDashboard sources={sources} />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-300 font-sans">
       <Header currentView={view} setView={setView} onAddLink={openAddModal} />
       <main className="p-4 sm:p-6 lg:p-8">
-        {view === View.Links ? (
-          <LinkMonitoringDashboard 
-            links={links} 
-            onEdit={handleEditLink} 
-            onDelete={handleDeleteLink}
-          />
-        ) : (
-          <SourceIntelligenceDashboard sources={sources} />
-        )}
+        {renderContent()}
       </main>
       <Modal isOpen={isModalOpen} onClose={closeModal}>
         <LinkEditor 
