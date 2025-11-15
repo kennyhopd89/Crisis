@@ -1,11 +1,10 @@
-
 {
   "name": "crisis-dashboard",
   "version": "1.0.0",
   "description": "Dashboard theo dõi link tiêu cực",
   "main": "index.js",
   "scripts": {
-    "build": "esbuild index.tsx --bundle --outfile=dist/bundle.js --loader:.tsx=tsx --jsx=automatic --minify"
+    "build": "esbuild index.tsx --bundle --outfile=bundle.js --loader:.tsx=tsx --jsx=automatic --minify"
   },
   "keywords": [],
   "author": "",
