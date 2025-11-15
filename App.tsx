@@ -7,8 +7,9 @@ import SourceIntelligenceDashboard from './components/SourceIntelligenceDashboar
 import LinkEditor from './components/LinkEditor';
 import Modal from './components/Modal';
 
-// !!! QUAN TRỌNG: Dán Web App URL của Google Apps Script của bạn vào đây
-const API_URL = "https://script.google.com/macros/https://script.google.com/a/macros/89sgroup.vn/s/AKfycbzREAeS-aFnaKD7-pty5Hd_vn5380UJZFEE4aQwTT03InbBwl4-C55VE-j02NcaUj8ecQ/exec";
+// !!! QUAN TRỌNG: Hãy đảm bảo bạn dán ĐÚNG Web App URL của bạn vào đây.
+// URL đúng chỉ có một "https://script.google.com/macros/s/" ở đầu.
+const API_URL = "https://script.google.com/macros/s/AKfycbzREAeS-aFnaKD7-pty5Hd_vn5380UJZFEE4aQwTT03InbBwl4-C55VE-j02NcaUj8ecQ/exec";
 
 const App: React.FC = () => {
   const [view, setView] = useState<View>(View.Links);
@@ -25,8 +26,8 @@ const App: React.FC = () => {
     try {
       // Sử dụng Promise.all để gọi API song song
       const [linksResponse, sourcesResponse] = await Promise.all([
-        fetch(`${API_URL}?action=getLinks`),
-        fetch(`${API_URL}?action=getSources`)
+        fetch(`${API_URL}?action=getLinks`, { redirect: 'follow' }),
+        fetch(`${API_URL}?action=getSources`, { redirect: 'follow' })
       ]);
 
       if (!linksResponse.ok || !sourcesResponse.ok) {
@@ -49,7 +50,7 @@ const App: React.FC = () => {
 
   // Gọi API khi component được mount lần đầu
   useEffect(() => {
-    if (API_URL.includes("AKfycbzREAeS-aFnaKD7-pty5Hd_vn5380UJZFEE4aQwTT03InbBwl4-C55VE-j02NcaUj8ecQ")) {
+    if (API_URL.includes("YOUR_APPS_SCRIPT_WEB_APP_URL")) { // Một kiểm tra nhỏ để nhắc nhở người dùng
         alert("Vui lòng cập nhật API_URL trong file App.tsx");
         setLoading(false);
         return;
