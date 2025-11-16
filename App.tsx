@@ -177,14 +177,18 @@ const App: React.FC = () => {
     }
 
     // Bước 4: Tiến hành xóa
+    const payload = {
+        id: linkId,
+        deletedBy: deletedBy.trim(),
+    };
+
     try {
         await fetch(API_URL, {
             method: 'POST',
             redirect: 'follow',
-            body: JSON.stringify({ 
-                action: 'deleteLink', 
-                id: linkId, 
-                deletedBy: deletedBy.trim() 
+            body: JSON.stringify({
+                action: 'deleteLink',
+                payload: payload
             }),
             headers: {
                 'Content-Type': 'text/plain;charset=utf-8',
