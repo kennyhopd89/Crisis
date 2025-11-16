@@ -59,18 +59,16 @@ const normalizeUrl = (urlString: string): string => {
 
 const App: React.FC = () => {
   const [view, setView] = useState<View>(View.Links);
-  // Chuyển từ useLocalStorage sang useState
   const [links, setLinks] = useState<Link[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isDeduplicating, setIsDeduplicating] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLink, setEditingLink] = useState<Link | null>(null);
 
-  // Hàm để lấy dữ liệu từ backend
   const fetchData = useCallback(async () => {
-    if (!loading) setLoading(true); // Hiển thị loading khi fetch lại
+    setLoading(true);
     try {
-      // Sử dụng Promise.all để gọi API song song
       const [linksResponse, sourcesResponse] = await Promise.all([
         fetch(`${API_URL}?action=getLinks`, { redirect: 'follow' }),
         fetch(`${API_URL}?action=getSources`, { redirect: 'follow' })
@@ -92,39 +90,35 @@ const App: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [loading]);
+  }, []);
 
-  // Gọi API khi component được mount lần đầu
   useEffect(() => {
-    if (API_URL.includes("YOUR_APPS_SCRIPT_WEB_APP_URL")) { // Một kiểm tra nhỏ để nhắc nhở người dùng
+    if (API_URL.includes("YOUR_APPS_SCRIPT_WEB_APP_URL")) {
         alert("Vui lòng cập nhật API_URL trong file App.tsx");
         setLoading(false);
         return;
     }
     fetchData();
-     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Chỉ chạy một lần
+  }, [fetchData]);
 
   const handleSaveLink = async (linkData: Link) => {
     const isEditing = !!linkData.id;
-
     const normalizedUrl = normalizeUrl(linkData.url);
 
-    // Kiểm tra link trùng lặp (hoạt động cho cả thêm mới và chỉnh sửa)
     const isDuplicate = links.some(
       link => (!isEditing || link.id !== linkData.id) && normalizeUrl(link.url) === normalizedUrl
     );
 
     if (isDuplicate) {
       alert('Lỗi: Link này đã tồn tại trong hệ thống. Vui lòng kiểm tra lại.');
-      return; // Dừng thực thi nếu link bị trùng
+      return;
     }
     
     const action = isEditing ? 'updateLink' : 'addLink';
     const payload = { ...linkData };
       
     try {
-      await fetch(API_URL, {
+      const response = await fetch(API_URL, {
         method: 'POST',
         redirect: "follow",
         body: JSON.stringify({ action, payload }),
@@ -132,10 +126,15 @@ const App: React.FC = () => {
           'Content-Type': 'text/plain;charset=utf-8',
         },
       });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Server responded with status ${response.status}: ${errorText || 'Unknown error'}`);
+      }
       fetchData();
     } catch (error) {
       console.error("Lỗi khi lưu link:", error);
-      alert("Lưu link thất bại. Vui lòng thử lại.");
+      alert(`Lưu link thất bại. Lỗi: ${error instanceof Error ? error.message : String(error)}`);
     }
     
     closeModal();
@@ -146,6 +145,27 @@ const App: React.FC = () => {
     setIsModalOpen(true);
   };
   
+  // Hàm cốt lõi để thực hiện yêu cầu xóa trên server
+  const performDeleteRequest = async (linkToDelete: Link, deletedBy: string) => {
+    const payload = {
+      ...linkToDelete,
+      deletedBy: deletedBy.trim(),
+    };
+    const response = await fetch(API_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        body: JSON.stringify({ action: 'deleteLink', payload }),
+        headers: {
+            'Content-Type': 'text/plain;charset=utf-8',
+        },
+    });
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Server responded with status ${response.status}: ${errorText || 'Unknown error'}`);
+    }
+  };
+
+
   const handleDeleteLink = async (linkId: string) => {
     const linkToDelete = links.find(link => link.id === linkId);
     if (!linkToDelete) {
@@ -153,54 +173,97 @@ const App: React.FC = () => {
         return;
     }
 
-    // Bước 1: Yêu cầu nhập tên người xóa
     const deletedBy = prompt("Để tiếp tục, vui lòng nhập TÊN của bạn:");
     if (!deletedBy || deletedBy.trim() === '') {
         alert("Hành động xóa đã được hủy do không nhập tên.");
         return;
     }
 
-    // Bước 2: Yêu cầu nhập văn bản xác nhận
     const confirmationText = "XÁC NHẬN XÓA";
     const userConfirmation = prompt(
         `Bạn đang chuẩn bị xóa (lưu trữ) link:\n` +
         `- Vấn đề: ${linkToDelete.issueType || 'Không có'}\n` +
         `- URL: ${linkToDelete.url}\n\n` +
-        `Hành động này không thể hoàn tác. Để xác nhận, vui lòng nhập chính xác cụm từ sau vào ô bên dưới:\n\n` +
+        `Hành động này không thể hoàn tác. Để xác nhận, vui lòng nhập chính xác cụm từ sau:\n\n` +
         `${confirmationText}`
     );
 
-    // Bước 3: So sánh văn bản xác nhận
     if (userConfirmation !== confirmationText) {
         alert("Xác nhận không khớp. Hành động xóa đã được hủy.");
         return;
     }
-
-    // Bước 4: Tiến hành xóa
-    const payload = {
-        id: linkId,
-        deletedBy: deletedBy.trim(),
-    };
-
+    
     try {
-        await fetch(API_URL, {
-            method: 'POST',
-            redirect: 'follow',
-            body: JSON.stringify({
-                action: 'deleteLink',
-                payload: payload
-            }),
-            headers: {
-                'Content-Type': 'text/plain;charset=utf-8',
-            },
-        });
+        await performDeleteRequest(linkToDelete, deletedBy);
         alert(`Link đã được xóa (lưu trữ) bởi ${deletedBy.trim()}.`);
         fetchData();
     } catch (error) {
         console.error("Lỗi khi xóa link:", error);
-        alert("Xóa link thất bại. Vui lòng thử lại.");
+        alert(`Xóa link thất bại. Lỗi: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
+  
+  const handleDeduplicate = async () => {
+    if (!window.confirm("Chức năng này sẽ quét toàn bộ dữ liệu, tìm các link trùng lặp (giữ lại link cũ nhất) và xóa các bản sao. Hành động này không thể hoàn tác. Bạn có muốn tiếp tục?")) {
+      return;
+    }
+    setIsDeduplicating(true);
+
+    const urlMap = new Map<string, Link[]>();
+    links.forEach(link => {
+      const normalized = normalizeUrl(link.url);
+      if (!urlMap.has(normalized)) {
+        urlMap.set(normalized, []);
+      }
+      urlMap.get(normalized)!.push(link);
+    });
+
+    const linksToDelete: Link[] = [];
+    urlMap.forEach((linkGroup) => {
+      if (linkGroup.length > 1) {
+        // Sắp xếp để giữ lại link được tạo sớm nhất
+        linkGroup.sort((a, b) => new Date(a.detectedAt).getTime() - new Date(b.detectedAt).getTime());
+        // Thêm tất cả trừ link đầu tiên (cũ nhất) vào danh sách xóa
+        linksToDelete.push(...linkGroup.slice(1));
+      }
+    });
+
+    if (linksToDelete.length === 0) {
+      setIsDeduplicating(false);
+      alert("Không tìm thấy link nào trùng lặp.");
+      return;
+    }
+
+    const deletedBy = prompt(`Tìm thấy ${linksToDelete.length} link trùng lặp. Vui lòng nhập TÊN của bạn để xác nhận xóa:`
+    );
+
+    if (!deletedBy || deletedBy.trim() === '') {
+        setIsDeduplicating(false);
+        alert("Hành động dọn dẹp đã được hủy do không nhập tên.");
+        return;
+    }
+    
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const link of linksToDelete) {
+      try {
+        await performDeleteRequest(link, deletedBy);
+        successCount++;
+      } catch (error) {
+        console.error(`Lỗi khi xóa link trùng lặp (ID: ${link.id}):`, error);
+        errorCount++;
+      }
+    }
+    
+    setIsDeduplicating(false);
+    alert(`Dọn dẹp hoàn tất!\n- Đã xóa thành công: ${successCount}\n- Thất bại: ${errorCount}`);
+    
+    if (successCount > 0) {
+      fetchData(); // Tải lại dữ liệu sau khi dọn dẹp
+    }
+  };
+
 
   const openAddModal = () => {
     setEditingLink(null);
@@ -216,11 +279,15 @@ const App: React.FC = () => {
     if (loading) {
         return <div className="text-center p-10">Đang tải dữ liệu...</div>;
     }
+     if (isDeduplicating) {
+        return <div className="text-center p-10">Đang quét và dọn dẹp các link trùng lặp...</div>;
+    }
     if (view === View.Links) {
         return <LinkMonitoringDashboard 
             links={links} 
             onEdit={handleEditLink} 
             onDelete={handleDeleteLink}
+            onDeduplicate={handleDeduplicate}
         />;
     }
     return <SourceIntelligenceDashboard sources={sources} />;

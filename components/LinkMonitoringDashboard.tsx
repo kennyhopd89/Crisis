@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { Link, Severity, Status, SourceType } from '../types';
-import { EditIcon, TrashIcon, LinkIcon, PendingIcon, InProgressIcon, DoneIcon } from './icons';
+import { EditIcon, TrashIcon, LinkIcon, PendingIcon, InProgressIcon, DoneIcon, SparklesIcon } from './icons';
 
 interface LinkMonitoringDashboardProps {
   links: Link[];
   onEdit: (link: Link) => void;
   onDelete: (id: string) => void;
+  onDeduplicate: () => void;
 }
 
 const severityColor = {
@@ -27,7 +28,7 @@ const statusIcon = {
 };
 
 
-const LinkMonitoringDashboard: React.FC<LinkMonitoringDashboardProps> = ({ links, onEdit, onDelete }) => {
+const LinkMonitoringDashboard: React.FC<LinkMonitoringDashboardProps> = ({ links, onEdit, onDelete, onDeduplicate }) => {
   const [filters, setFilters] = useState({ severity: '', status: '', sourceType: '' });
 
   const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
@@ -79,6 +80,10 @@ const LinkMonitoringDashboard: React.FC<LinkMonitoringDashboardProps> = ({ links
             <option value="">Tất cả nguồn</option>
             {Object.values(SourceType).map(s => <option key={s} value={s}>{s}</option>)}
           </select>
+           <button onClick={onDeduplicate} className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 px-4 rounded-md text-sm transition-colors" title="Tự động tìm và xóa các link bị trùng lặp">
+            <SparklesIcon className="w-4 h-4" />
+            Dọn dẹp
+          </button>
           <button onClick={exportToCSV} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-md text-sm transition-colors">
             Export CSV
           </button>
