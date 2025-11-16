@@ -209,6 +209,7 @@ const App: React.FC = () => {
     }
     setIsDeduplicating(true);
 
+    // Bước 1: Nhóm tất cả các link theo URL đã được chuẩn hóa
     const urlMap = new Map<string, Link[]>();
     links.forEach(link => {
       const normalized = normalizeUrl(link.url);
@@ -218,15 +219,19 @@ const App: React.FC = () => {
       urlMap.get(normalized)!.push(link);
     });
 
-    const linksToDelete: Link[] = [];
+    // Bước 2: Xây dựng một danh sách an toàn gồm các ID của link cần GIỮ LẠI
+    const idsToKeep = new Set<string>();
     urlMap.forEach((linkGroup) => {
-      if (linkGroup.length > 1) {
-        // Sắp xếp để giữ lại link được tạo sớm nhất
-        linkGroup.sort((a, b) => new Date(a.detectedAt).getTime() - new Date(b.detectedAt).getTime());
-        // Thêm tất cả trừ link đầu tiên (cũ nhất) vào danh sách xóa
-        linksToDelete.push(...linkGroup.slice(1));
+      // Sắp xếp nhóm link theo thời gian để tìm ra bản ghi gốc (cũ nhất)
+      linkGroup.sort((a, b) => new Date(a.detectedAt).getTime() - new Date(b.detectedAt).getTime());
+      // Giữ lại link đầu tiên (cũ nhất, hoặc link duy nhất nếu không trùng)
+      if (linkGroup.length > 0) {
+        idsToKeep.add(linkGroup[0].id);
       }
     });
+
+    // Bước 3: Xác định các link cần xóa bằng cách lọc ra những link không có trong danh sách an toàn
+    const linksToDelete = links.filter(link => !idsToKeep.has(link.id));
 
     if (linksToDelete.length === 0) {
       setIsDeduplicating(false);
