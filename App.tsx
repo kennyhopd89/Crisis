@@ -11,6 +11,52 @@ import Modal from './components/Modal';
 // URL đúng chỉ có một "https://script.google.com/macros/s/" ở đầu.
 const API_URL = "https://script.google.com/macros/s/AKfycbzREAeS-aFnaKD7-pty5Hd_vn5380UJZFEE4aQwTT03InbBwl4-C55VE-j02NcaUj8ecQ/exec";
 
+/**
+ * Normalizes a URL string for consistent comparison.
+ * - Forces HTTPS protocol.
+ * - Removes 'www.' subdomain.
+ * - Removes trailing slashes.
+ * - Removes common tracking parameters.
+ * - Sorts remaining query parameters alphabetically.
+ * @param urlString The URL to normalize.
+ * @returns A normalized URL string.
+ */
+const normalizeUrl = (urlString: string): string => {
+  let urlWithProtocol = urlString.trim();
+  if (!/^https?:\/\//i.test(urlWithProtocol)) {
+    urlWithProtocol = 'https://' + urlWithProtocol;
+  }
+
+  try {
+    const url = new URL(urlWithProtocol);
+    
+    if (url.hostname.startsWith('www.')) {
+      url.hostname = url.hostname.substring(4);
+    }
+    
+    if (url.pathname.length > 1 && url.pathname.endsWith('/')) {
+      url.pathname = url.pathname.slice(0, -1);
+    }
+    
+    const trackingParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'gclid', '_ga', 'mc_cid', 'mc_eid', 'msclkid', 'dclid', '_r', '_t'];
+    trackingParams.forEach(param => url.searchParams.delete(param));
+    
+    const sortedParams = new URLSearchParams();
+    Array.from(url.searchParams.keys()).sort().forEach(key => {
+        url.searchParams.getAll(key).sort().forEach(value => {
+            sortedParams.append(key, value);
+        });
+    });
+    url.search = sortedParams.toString();
+    
+    return `https://${url.hostname}${url.pathname}${url.search}`;
+  } catch (error) {
+    // Fallback for invalid URLs: basic trimming, lowercasing, and trailing slash removal
+    return urlString.trim().toLowerCase().replace(/\/$/, "");
+  }
+};
+
+
 const App: React.FC = () => {
   const [view, setView] = useState<View>(View.Links);
   // Chuyển từ useLocalStorage sang useState
@@ -59,25 +105,25 @@ const App: React.FC = () => {
      // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Chỉ chạy một lần
 
-  const handleSaveLink = async (linkToSave: Link) => {
-    const isEditing = !!editingLink;
+  const handleSaveLink = async (linkData: Link) => {
+    const isEditing = !!linkData.id;
 
-    // Kiểm tra link trùng lặp chỉ khi thêm mới
-    if (!isEditing) {
-      const isDuplicate = links.some(link => link.url.trim().toLowerCase() === linkToSave.url.trim().toLowerCase());
-      if (isDuplicate) {
-        alert('Lỗi: Link này đã tồn tại trong hệ thống. Vui lòng kiểm tra lại.');
-        return; // Dừng thực thi nếu link bị trùng
-      }
+    const normalizedUrl = normalizeUrl(linkData.url);
+
+    // Kiểm tra link trùng lặp (hoạt động cho cả thêm mới và chỉnh sửa)
+    const isDuplicate = links.some(
+      link => (!isEditing || link.id !== linkData.id) && normalizeUrl(link.url) === normalizedUrl
+    );
+
+    if (isDuplicate) {
+      alert('Lỗi: Link này đã tồn tại trong hệ thống. Vui lòng kiểm tra lại.');
+      return; // Dừng thực thi nếu link bị trùng
     }
-
-    const action = isEditing ? 'updateLink' : 'addLink';
     
-    // Tạo payload cho API. Backend sẽ tự gán ID và detectedAt cho link mới.
-    const payload = { ...linkToSave };
+    const action = isEditing ? 'updateLink' : 'addLink';
+    const payload = { ...linkData };
       
     try {
-      // Apps Script yêu cầu gửi POST với kiểu Content-Type đặc biệt
       await fetch(API_URL, {
         method: 'POST',
         redirect: "follow",
@@ -86,10 +132,7 @@ const App: React.FC = () => {
           'Content-Type': 'text/plain;charset=utf-8',
         },
       });
-      
-      // Sau khi gửi, tải lại toàn bộ dữ liệu để đảm bảo đồng bộ
       fetchData();
-
     } catch (error) {
       console.error("Lỗi khi lưu link:", error);
       alert("Lưu link thất bại. Vui lòng thử lại.");
@@ -104,23 +147,52 @@ const App: React.FC = () => {
   };
   
   const handleDeleteLink = async (linkId: string) => {
-     if (window.confirm('Bạn có chắc chắn muốn xóa link này?')) {
-        try {
-            await fetch(API_URL, {
-                method: 'POST',
-                redirect: 'follow',
-                body: JSON.stringify({ action: 'deleteLink', payload: { id: linkId } }),
-                headers: {
-                    'Content-Type': 'text/plain;charset=utf-8',
-                },
-            });
-            // Tải lại dữ liệu sau khi xóa
-            fetchData();
-        } catch (error) {
-            console.error("Lỗi khi xóa link:", error);
-            alert("Xóa link thất bại.");
-        }
-     }
+    const linkToDelete = links.find(link => link.id === linkId);
+    if (!linkToDelete) {
+        alert("Lỗi: Không tìm thấy link để xóa.");
+        return;
+    }
+
+    // Bước 1: Yêu cầu nhập tên người xóa
+    const deletedBy = prompt("Để tiếp tục, vui lòng nhập TÊN của bạn:");
+    if (!deletedBy || deletedBy.trim() === '') {
+        alert("Hành động xóa đã được hủy do không nhập tên.");
+        return;
+    }
+
+    // Bước 2: Yêu cầu nhập văn bản xác nhận
+    const confirmationText = "XÁC NHẬN XÓA";
+    const userConfirmation = prompt(
+        `Bạn đang chuẩn bị xóa (lưu trữ) link:\n` +
+        `- Vấn đề: ${linkToDelete.issueType || 'Không có'}\n` +
+        `- URL: ${linkToDelete.url}\n\n` +
+        `Hành động này không thể hoàn tác. Để xác nhận, vui lòng nhập chính xác cụm từ sau vào ô bên dưới:\n\n` +
+        `${confirmationText}`
+    );
+
+    // Bước 3: So sánh văn bản xác nhận
+    if (userConfirmation !== confirmationText) {
+        alert("Xác nhận không khớp. Hành động xóa đã được hủy.");
+        return;
+    }
+
+    // Bước 4: Tiến hành xóa
+    try {
+        const payload = { id: linkId, deletedBy: deletedBy.trim() };
+        await fetch(API_URL, {
+            method: 'POST',
+            redirect: 'follow',
+            body: JSON.stringify({ action: 'deleteLink', payload }),
+            headers: {
+                'Content-Type': 'text/plain;charset=utf-8',
+            },
+        });
+        alert(`Link đã được xóa (lưu trữ) bởi ${deletedBy.trim()}.`);
+        fetchData();
+    } catch (error) {
+        console.error("Lỗi khi xóa link:", error);
+        alert("Xóa link thất bại. Vui lòng thử lại.");
+    }
   };
 
   const openAddModal = () => {

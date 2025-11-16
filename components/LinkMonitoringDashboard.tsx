@@ -1,7 +1,6 @@
-
 import React, { useState, useMemo } from 'react';
 import { Link, Severity, Status, SourceType } from '../types';
-import { EditIcon, TrashIcon, LinkIcon } from './icons';
+import { EditIcon, TrashIcon, LinkIcon, PendingIcon, InProgressIcon, DoneIcon } from './icons';
 
 interface LinkMonitoringDashboardProps {
   links: Link[];
@@ -20,6 +19,13 @@ const statusColor = {
   [Status.InProgress]: 'bg-blue-500/20 text-blue-400',
   [Status.Pending]: 'bg-slate-600/30 text-slate-400',
 };
+
+const statusIcon = {
+    [Status.Done]: <DoneIcon className="w-4 h-4" />,
+    [Status.InProgress]: <InProgressIcon className="w-4 h-4" />,
+    [Status.Pending]: <PendingIcon className="w-4 h-4" />,
+};
+
 
 const LinkMonitoringDashboard: React.FC<LinkMonitoringDashboardProps> = ({ links, onEdit, onDelete }) => {
   const [filters, setFilters] = useState({ severity: '', status: '', sourceType: '' });
@@ -93,9 +99,13 @@ const LinkMonitoringDashboard: React.FC<LinkMonitoringDashboardProps> = ({ links
           <tbody>
             {filteredLinks.length > 0 ? filteredLinks.map(link => (
               <tr key={link.id} className="bg-slate-800 border-b border-slate-700 hover:bg-slate-700/50 transition-colors">
-                <td className="px-6 py-4">
-                  <a href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 font-medium text-indigo-400 hover:underline truncate" title={link.url}>
-                    <LinkIcon className="w-4 h-4 shrink-0"/> <span className="truncate">{link.issueType}</span>
+                <td className="px-6 py-4 max-w-xs">
+                  <div className="font-medium text-slate-200 truncate" title={link.issueType}>
+                    {link.issueType}
+                  </div>
+                  <a href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-indigo-400 hover:underline truncate" title={link.url}>
+                    <LinkIcon className="w-4 h-4 shrink-0"/>
+                    <span className="truncate">{link.url}</span>
                   </a>
                   <p className="text-xs text-slate-500 truncate" title={link.source}>{link.source}</p>
                 </td>
@@ -103,7 +113,10 @@ const LinkMonitoringDashboard: React.FC<LinkMonitoringDashboardProps> = ({ links
                   <span className={`px-2 py-1 text-xs font-semibold rounded-full ${severityColor[link.severity]}`}>{link.severity}</span>
                 </td>
                 <td className="px-6 py-4">
-                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusColor[link.status]}`}>{link.status}</span>
+                  <span className={`inline-flex items-center gap-x-1.5 px-2 py-1 text-xs font-semibold rounded-full ${statusColor[link.status]}`}>
+                    {statusIcon[link.status]}
+                    {link.status}
+                  </span>
                 </td>
                 <td className="px-6 py-4">{link.assignedTo}</td>
                 <td className="px-6 py-4 text-xs">{new Date(link.detectedAt).toLocaleString('vi-VN')}</td>
